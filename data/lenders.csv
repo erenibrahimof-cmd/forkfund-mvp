@@ -1,0 +1,9 @@
+lender_id,lender_name,focus_city,min_loan_amount,max_loan_amount,preferred_loan_purposes
+1,ABN AMRO,,50000,500000,"Term loan, Working capital"
+2,ING,,75000,750000,"Term loan, Equipment"
+3,Rabobank,,25000,300000,"Working capital, Renovation"
+4,Triodos Bank,,50000,250000,"Renovation, Equipment"
+5,RegioBank,Amsterdam,50000,200000,"Term loan, Working capital"
+6,ASN Bank,,30000,150000,Renovation
+7,VAN Groningen,Groningen,25000,180000,"Term loan, Equipment"
+8,Friesch Bank,,40000,220000,Working capital

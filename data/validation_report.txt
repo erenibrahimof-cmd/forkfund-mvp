@@ -1,0 +1,112 @@
+FORKFUND SYNTHETIC DATA VALIDATION REPORT
+======================================================================
+
+Generated: 2026-06-11T18:04:37.997768
+Seed: 42
+Reference date: 2025-12-31
+
+FILE STRUCTURE
+----------------------------------------------------------------------
+restaurants.csv: 80 rows
+monthly_bank.csv: 960 rows
+monthly_pos.csv: 960 rows
+accounting.csv: 80 rows
+lenders.csv: 8 rows
+
+DATA INTEGRITY CHECKS
+----------------------------------------------------------------------
+Each restaurant has exactly 1 restaurant row: True
+Each restaurant has exactly 12 bank rows: True
+Each restaurant has exactly 12 POS rows: True
+Each restaurant has exactly 1 accounting row: True
+
+REVENUE BAND DISTRIBUTION
+----------------------------------------------------------------------
+€150,000–€500,000: 20 restaurants
+€500,000–€1,000,000: 25 restaurants
+€1,000,000–€1,500,000: 20 restaurants
+€1,500,000–€2,500,000: 15 restaurants
+TOTAL: 80 restaurants
+
+CITY DISTRIBUTION
+----------------------------------------------------------------------
+  Amsterdam: 18
+  Rotterdam: 13
+  Utrecht: 11
+  Eindhoven: 7
+  The Hague: 7
+  Breda: 6
+  Groningen: 6
+  Maastricht: 5
+  Arnhem: 4
+  Dordrecht: 3
+TOTAL: 80
+
+LOAN PURPOSE VOCABULARY CHECK
+----------------------------------------------------------------------
+  Term loan: 15
+  Working capital: 28
+  Equipment: 19
+  Renovation: 18
+All purposes valid: True
+
+REGISTRATION DATE VALIDATION
+----------------------------------------------------------------------
+Non-demo registrations on/before 2024-12-31: True
+Levant Express registration is 2025-01-10: True
+Late non-demo registrations: 0
+
+AVERAGE CHECK STATISTICS
+----------------------------------------------------------------------
+Min: €62.85
+Mean: €97.66
+Median: €94.88
+Max: €152.22
+
+COVERS PER SEAT PER MONTH STATISTICS
+----------------------------------------------------------------------
+Min: 1.88
+Mean: 9.45
+Median: 9.04
+Max: 25.88
+
+DEMO PROFILES CHARACTERISTICS
+----------------------------------------------------------------------
+
+ID 1: Bonne Table (Strong (A-like))
+  Revenue: €450,000
+  Prime cost: 58.0%
+  Rent-to-revenue: 7.1%
+  Revenue CV: 0.065 [PASS]
+  Cash-flow margin: 34.0% [PASS]
+  Years active: 9.8
+  Debt-to-revenue: 10.0%
+  Delivery share: 8.0%
+  Weekend share: 42.0%
+
+ID 41: Trattoria Pietro (Medium (C-like))
+  Revenue: €825,000
+  Prime cost: 66.0%
+  Rent-to-revenue: 11.6%
+  Revenue CV: 0.115 [PASS]
+  Cash-flow margin: 22.5% [PASS]
+  Years active: 2.5
+  Debt-to-revenue: 40.0%
+  Delivery share: 28.0%
+  Weekend share: 52.0%
+
+ID 15: Levant Express (High-risk (D-like))
+  Revenue: €320,000
+  Prime cost: 76.0%
+  Rent-to-revenue: 14.0%
+  Revenue CV: 0.190 [PASS]
+  Cash-flow margin: 12.0% [PASS]
+  Years active: 1.0
+  Debt-to-revenue: 62.5%
+  Delivery share: 37.5%
+  Weekend share: 65.0%
+
+
+VALIDATION RESULTS
+----------------------------------------------------------------------
+✓ All critical checks PASSED

@@ -85,6 +85,93 @@ DEMO_CASH_MARGIN_TARGETS = {
     DEMO_HIGH_RISK_ID: (0.10, 0.14),
 }
 
+DEMO_IDS = {DEMO_STRONG_ID, DEMO_MEDIUM_ID, DEMO_HIGH_RISK_ID}
+
+# Minimum non-prime, non-rent operating costs assumed when checking EBITDA
+# coherence. This is intentionally conservative; it avoids accounting rows
+# where food + labour + rent already consume revenue but EBITDA is still shown
+# as positive.
+MIN_OTHER_OPERATING_EXPENSE_RATIO = 0.04
+
+RISK_TIERS = {
+    1: {
+        "name": "Excellent",
+        "prime_cost_ratio": (0.52, 0.60),
+        "rent_ratio": (0.06, 0.08),
+        "target_ebitda_margin": (0.13, 0.20),
+        "existing_debt_ratio": (0.00, 0.20),
+        "cash_flow_margin": (0.32, 0.42),
+        "revenue_cv": (0.03, 0.09),
+        "delivery_share": (0.05, 0.15),
+        "weekend_share": (0.35, 0.45),
+        "registration_start": datetime.date(2005, 1, 1),
+        "registration_end": datetime.date(2016, 12, 31),
+    },
+    2: {
+        "name": "Good",
+        "prime_cost_ratio": (0.58, 0.66),
+        "rent_ratio": (0.07, 0.11),
+        "target_ebitda_margin": (0.07, 0.15),
+        "existing_debt_ratio": (0.10, 0.45),
+        "cash_flow_margin": (0.22, 0.34),
+        "revenue_cv": (0.06, 0.14),
+        "delivery_share": (0.10, 0.28),
+        "weekend_share": (0.40, 0.56),
+        "registration_start": datetime.date(2010, 1, 1),
+        "registration_end": datetime.date(2022, 12, 31),
+    },
+    3: {
+        "name": "Medium",
+        "prime_cost_ratio": (0.63, 0.73),
+        "rent_ratio": (0.09, 0.14),
+        "target_ebitda_margin": (0.02, 0.10),
+        "existing_debt_ratio": (0.30, 0.65),
+        "cash_flow_margin": (0.14, 0.24),
+        "revenue_cv": (0.10, 0.22),
+        "delivery_share": (0.22, 0.40),
+        "weekend_share": (0.48, 0.66),
+        "registration_start": datetime.date(2014, 1, 1),
+        "registration_end": datetime.date(2022, 12, 31),
+    },
+    4: {
+        "name": "Struggling",
+        "prime_cost_ratio": (0.72, 0.82),
+        "rent_ratio": (0.13, 0.17),
+        "target_ebitda_margin": (-0.03, 0.04),
+        "existing_debt_ratio": (0.55, 0.88),
+        "cash_flow_margin": (0.06, 0.15),
+        "revenue_cv": (0.20, 0.34),
+        "delivery_share": (0.38, 0.52),
+        "weekend_share": (0.60, 0.75),
+        "registration_start": datetime.date(2019, 1, 1),
+        "registration_end": datetime.date(2023, 12, 31),
+    },
+    5: {
+        "name": "Distressed",
+        "prime_cost_ratio": (0.78, 0.84),
+        "rent_ratio": (0.14, 0.18),
+        "target_ebitda_margin": (-0.06, 0.00),
+        "existing_debt_ratio": (0.75, 1.00),
+        "cash_flow_margin": (0.03, 0.09),
+        "revenue_cv": (0.32, 0.44),
+        "delivery_share": (0.48, 0.62),
+        "weekend_share": (0.68, 0.80),
+        "registration_start": datetime.date(2021, 1, 1),
+        "registration_end": datetime.date(2024, 12, 31),
+    },
+}
+
+# Each band receives all five non-demo risk tiers, so revenue size does not
+# mechanically determine credit quality.
+RISK_TIER_COUNTS_BY_BAND = [
+    {1: 2, 2: 5, 3: 6, 4: 3, 5: 2},  # 18 non-demo rows in band 1
+    {1: 2, 2: 7, 3: 8, 4: 5, 5: 2},  # 24 non-demo rows in band 2
+    {1: 2, 2: 6, 3: 7, 4: 3, 5: 2},  # 20 non-demo rows in band 3
+    {1: 2, 2: 4, 3: 4, 4: 3, 5: 2},  # 15 non-demo rows in band 4
+]
+
+_RISK_TIER_LOOKUP = None
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -169,6 +256,48 @@ def get_city_distribution():
         city_list.extend([city] * count)
     random.shuffle(city_list)
     return city_list
+
+
+def configure_risk_tiers(seed=SEED):
+    """Assign hidden risk tiers within each revenue band."""
+    global _RISK_TIER_LOOKUP
+
+    rng = random.Random(seed + 1701)
+    tier_lookup = {}
+
+    for band, tier_counts in zip(REVENUE_BANDS, RISK_TIER_COUNTS_BY_BAND):
+        start_id, end_id = band["id_range"]
+        restaurant_ids = [
+            restaurant_id
+            for restaurant_id in range(start_id, end_id + 1)
+            if restaurant_id not in DEMO_IDS
+        ]
+        tier_pool = []
+        for tier, count in tier_counts.items():
+            tier_pool.extend([tier] * count)
+
+        if len(tier_pool) != len(restaurant_ids):
+            raise ValueError(
+                f"Risk-tier count mismatch for revenue band {band['id_range']}: "
+                f"{len(tier_pool)} tiers for {len(restaurant_ids)} restaurants"
+            )
+
+        rng.shuffle(tier_pool)
+        for restaurant_id, tier in zip(restaurant_ids, tier_pool):
+            tier_lookup[restaurant_id] = tier
+
+    _RISK_TIER_LOOKUP = tier_lookup
+    return tier_lookup
+
+
+def get_risk_tier(restaurant_id):
+    """Return the hidden non-demo risk tier for a restaurant, or None for demos."""
+    restaurant_id = int(restaurant_id)
+    if restaurant_id in DEMO_IDS:
+        return None
+    if _RISK_TIER_LOOKUP is None:
+        configure_risk_tiers()
+    return _RISK_TIER_LOOKUP[restaurant_id]
 
 
 def get_years_active(registration_date):
@@ -326,11 +455,6 @@ def generate_restaurants_csv(n=80, output_dir="data"):
             # Revenue estimate
             annual_revenue_estimate = random.uniform(band_min, band_max)
 
-            # Non-demo restaurants must exist before the 2025 trading period.
-            registration_date = generate_date(
-                datetime.date(2000, 1, 1), datetime.date(2024, 12, 31)
-            )
-
             # Assign demo profile
             demo_profile = None
             if restaurant_id == DEMO_STRONG_ID:
@@ -339,6 +463,19 @@ def generate_restaurants_csv(n=80, output_dir="data"):
                 demo_profile = "medium"
             elif restaurant_id == DEMO_HIGH_RISK_ID:
                 demo_profile = "high_risk"
+
+            # Non-demo restaurants must exist before the 2025 trading period.
+            # Registration dates are tier-shaped but independent from revenue band.
+            if demo_profile is None:
+                tier_config = RISK_TIERS[get_risk_tier(restaurant_id)]
+                registration_date = generate_date(
+                    tier_config["registration_start"],
+                    tier_config["registration_end"],
+                )
+            else:
+                registration_date = generate_date(
+                    datetime.date(2000, 1, 1), datetime.date(2024, 12, 31)
+                )
 
             # City assignment
             city = city_list[city_idx]
@@ -452,35 +589,53 @@ def generate_accounting_csv(restaurants_df, output_dir="data"):
             target_ebitda_margin = 0.03
             existing_debt_ratio = 0.625
         else:
-            # Generic restaurants: random but realistic profiles
-            # Food cost 25-35%
-            food_cost_ratio = random.uniform(0.25, 0.35)
-            # Labour cost 30-40%
-            labour_cost_ratio = random.uniform(0.30, 0.40)
-            # Rent 7-15%
-            rent_ratio = random.uniform(0.07, 0.15)
-            # EBITDA 2-18%
-            target_ebitda_margin = random.uniform(0.02, 0.18)
-            existing_debt_ratio = None  # Will be set randomly below
+            # Non-demo restaurants use correlated hidden risk tiers. EBITDA is
+            # back-solved from revenue minus food, labour, rent, and other opex
+            # so distressed rows remain arithmetically coherent.
+            tier_config = RISK_TIERS[get_risk_tier(restaurant_id)]
+            prime_cost_ratio = random.uniform(*tier_config["prime_cost_ratio"])
+            food_share_of_prime_cost = random.uniform(0.44, 0.52)
+            food_cost_ratio = prime_cost_ratio * food_share_of_prime_cost
+            labour_cost_ratio = prime_cost_ratio - food_cost_ratio
+            rent_ratio = random.uniform(*tier_config["rent_ratio"])
+            target_ebitda_margin = random.uniform(
+                *tier_config["target_ebitda_margin"]
+            )
+            existing_debt_ratio = random.uniform(
+                *tier_config["existing_debt_ratio"]
+            )
 
         # Compute costs
         food_cost = annual_revenue * food_cost_ratio
         labour_cost = annual_revenue * labour_cost_ratio
         rent_annual = annual_revenue * rent_ratio
-        ebitda = annual_revenue * target_ebitda_margin
+
+        if restaurant_id in DEMO_IDS:
+            ebitda = annual_revenue * target_ebitda_margin
+        else:
+            target_other_opex_ratio = (
+                1
+                - food_cost_ratio
+                - labour_cost_ratio
+                - rent_ratio
+                - target_ebitda_margin
+            )
+            other_operating_expenses = annual_revenue * max(
+                MIN_OTHER_OPERATING_EXPENSE_RATIO, target_other_opex_ratio
+            )
+            ebitda = (
+                annual_revenue
+                - food_cost
+                - labour_cost
+                - rent_annual
+                - other_operating_expenses
+            )
 
         # Debt and debt service
-        if existing_debt_ratio is not None:
+        if restaurant_id in DEMO_IDS:
             existing_debt = annual_revenue * existing_debt_ratio
         else:
-            # Random debt 0-80% of revenue
-            existing_debt_ratio = random.choice(
-                [0] * 2 + [random.uniform(0.05, 0.80) for _ in range(8)]
-            )
-            if existing_debt_ratio == 0:
-                existing_debt = 0
-            else:
-                existing_debt = annual_revenue * existing_debt_ratio
+            existing_debt = annual_revenue * existing_debt_ratio
 
         # Debt service: ~22% of existing debt annually (22% est. rate for typical restaurant lending)
         debt_service_estimated = existing_debt * 0.22 if existing_debt > 0 else 0
@@ -489,7 +644,6 @@ def generate_accounting_csv(restaurants_df, output_dir="data"):
         # Assuming interest is ~10% of existing debt (rough estimate)
         interest_expense = existing_debt * 0.10 if existing_debt > 0 else 0
         net_profit = ebitda - interest_expense
-        net_profit = max(0, net_profit)  # Ensure non-negative
 
         accounting.append(
             {
@@ -557,12 +711,16 @@ def generate_monthly_pos_csv(restaurants_df, accounting_df, output_dir="data"):
             average_check = target_average_check(row)
             target_cv = 0.19
         else:
-            # Generic: random but realistic values
+            tier_config = RISK_TIERS[get_risk_tier(restaurant_id)]
             target_cash_ratio = random.uniform(0.20, 0.40)
-            delivery_share_target = random.uniform(0.05, 0.40)
-            weekend_share_target = random.uniform(0.35, 0.70)
+            delivery_share_target = random.uniform(
+                *tier_config["delivery_share"]
+            )
+            weekend_share_target = random.uniform(
+                *tier_config["weekend_share"]
+            )
             average_check = target_average_check(row)
-            target_cv = None
+            target_cv = random.uniform(*tier_config["revenue_cv"])
 
         monthly_revenues = generate_monthly_revenues(annual_revenue, target_cv)
 
@@ -647,9 +805,13 @@ def generate_monthly_bank_csv(restaurants_df, accounting_df, output_dir="data"):
             outflow_ratio = 0.88
             target_cv = 0.19
         else:
+            tier_config = RISK_TIERS[get_risk_tier(restaurant_id)]
             target_cash_ratio = random.uniform(0.15, 0.40)
-            outflow_ratio = random.uniform(0.60, 0.85)
-            target_cv = None
+            cash_flow_margin_target = random.uniform(
+                *tier_config["cash_flow_margin"]
+            )
+            outflow_ratio = 1 - cash_flow_margin_target
+            target_cv = random.uniform(*tier_config["revenue_cv"])
 
         # Starting balance for month 1
         ending_balance = random.uniform(10000, 50000)
@@ -866,6 +1028,7 @@ def validate_accounting(df, restaurants_df):
 
     # Check financial logic
     for _, row in df.iterrows():
+        revenue = row["annual_revenue"]
         if row["annual_revenue"] <= 0:
             issues.append(
                 f"ERROR: restaurant_id {row['restaurant_id']} has non-positive revenue"
@@ -877,6 +1040,16 @@ def validate_accounting(df, restaurants_df):
         if row["existing_debt"] == 0 and row["debt_service_estimated"] != 0:
             issues.append(
                 f"ERROR: restaurant_id {row['restaurant_id']} has zero debt but positive debt service"
+            )
+        core_costs = row["food_cost"] + row["labour_cost"] + row["rent_annual"]
+        minimum_other_opex = revenue * MIN_OTHER_OPERATING_EXPENSE_RATIO
+        if core_costs > revenue and row["ebitda"] > 0:
+            issues.append(
+                f"ERROR: restaurant_id {row['restaurant_id']} has food+labour+rent above revenue but positive EBITDA"
+            )
+        if core_costs + minimum_other_opex > revenue and row["ebitda"] > 0:
+            issues.append(
+                f"ERROR: restaurant_id {row['restaurant_id']} has positive EBITDA despite minimum other operating expenses exceeding revenue"
             )
 
     return issues
@@ -1203,6 +1376,7 @@ def main(output_dir="data", seed=SEED):
     print(f"[INFO] Reference date for calculations: {DATA_REFERENCE_DATE}")
 
     set_seed(seed)
+    configure_risk_tiers(seed)
 
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)

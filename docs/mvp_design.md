@@ -244,15 +244,17 @@ High rent pressure is treated as a major fixed-cost risk.
 
 **7. POS demand quality**
 
-The MVP combines four POS indicators:
+The scoring engine uses three independent POS demand indicators with equal weight:
 
-$$s_7 = 0.25\,s_{\text{covers}} + 0.25\,s_{\text{avg check}} + 0.25\,s_{\text{table turnover}} + 0.25\,s_{\text{RevPASH}}$$
+$$s_7 = \tfrac{1}{3}\,s_{\text{avg check}} + \tfrac{1}{3}\,s_{\text{table turnover}} + \tfrac{1}{3}\,s_{\text{RevPASH}}$$
 
 where:
 
 $$\text{RevPASH} = \frac{\text{monthly revenue}}{\text{number of seats} \times \text{opening hours per month}}$$
 
-Each component is scaled from 0 to 100 using simple percentile-style bands within the synthetic restaurant population. This makes the model restaurant-specific without pretending to estimate a true default probability.
+The original design listed four components including a raw-covers volume metric (covers\_per\_seat\_month × seats). Covers volume is omitted because it is nearly perfectly correlated with the table-turnover proxy within any revenue band — both are derived from the same monthly covers count. Three independent signals (revenue quality per customer, seat utilisation, seat-hour productivity) avoid redundancy while preserving the restaurant-specific character of the dimension.
+
+Each component is scored as the restaurant's population percentile rank (0–100) within the 80-restaurant pre-loaded dataset.
 
 **8. Seasonality and concentration risk**
 
@@ -269,6 +271,32 @@ For the MVP, the score is reduced when:
 - the coefficient of variation of monthly revenue is high;
 - delivery-platform revenue exceeds 35% of total revenue;
 - weekend revenue exceeds 60% of total revenue.
+
+The three components use the following step-function thresholds as implemented in `src/scorer.py`:
+
+| Revenue CV | *s*_seasonality |
+|---|---|
+| ≤ 0.10 | 100 |
+| ≤ 0.15 | 75 |
+| ≤ 0.20 | 50 |
+| ≤ 0.30 | 25 |
+| > 0.30 | 0 |
+
+| Delivery share | *s*_delivery |
+|---|---|
+| ≤ 15% | 100 |
+| ≤ 25% | 75 |
+| ≤ 35% | 50 |
+| ≤ 45% | 25 |
+| > 45% | 0 |
+
+| Weekend share | *s*_weekend |
+|---|---|
+| ≤ 45% | 100 |
+| ≤ 55% | 75 |
+| ≤ 60% | 50 |
+| ≤ 70% | 25 |
+| > 70% | 0 |
 
 **9. Business maturity**
 

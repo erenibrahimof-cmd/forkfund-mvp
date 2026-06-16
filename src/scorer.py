@@ -160,7 +160,7 @@ def _s6(row) -> float:
 
 def _s7(row, pop_context: dict) -> float:
     """
-    POS demand quality — 3 components, 1/3 weight each:
+    POS demand quality: 3 components, 1/3 weight each:
       average_check, covers_per_seat_month, revpash.
 
     A fourth component (covers_vol = covers_per_seat_month × seats) was
@@ -177,7 +177,7 @@ def _s7(row, pop_context: dict) -> float:
 
 
 def _s8(row) -> float:
-    """Seasonality and concentration risk — step functions per docs/mvp_design.md §6.2."""
+    """Seasonality and concentration risk: step functions per docs/mvp_design.md §6.2."""
     if not row["pos_present"]:
         return NEUTRAL
 
@@ -220,8 +220,8 @@ def score_restaurant(row: pd.Series, pop_context: dict) -> dict:
 
     Parameters
     ----------
-    row         : pd.Series — one row of the metrics DataFrame
-    pop_context : dict — from build_pop_context(), used for s7 percentile scoring
+    row         : pd.Series, one row of the metrics DataFrame
+    pop_context : dict, from build_pop_context(), used for s7 percentile scoring
 
     Returns
     -------
@@ -296,7 +296,7 @@ def score_all_restaurants(metrics_df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Score drivers — helper sentiment
+# Score drivers: helper sentiment
 # ---------------------------------------------------------------------------
 
 def _sentiment(sub_score: float) -> str:
@@ -312,106 +312,106 @@ def _sentiment(sub_score: float) -> str:
 def _d1(row, score: float):
     dc = float(row["data_completeness"])
     if dc >= 100:
-        return _sentiment(score), "All three data sources connected — maximum lender confidence."
+        return _sentiment(score), "All three data sources connected: maximum lender confidence."
     if dc >= 67:
-        return "neutral", "Two of three data sources connected — lender confidence is reduced."
+        return "neutral", "Two of three data sources connected. Lender confidence is reduced."
     if dc >= 33:
-        return "neutral", "Only one data source connected — score is indicative only."
-    return "risk", "No data sources connected — score cannot be reliably assessed."
+        return "neutral", "Only one data source connected. Score is indicative only."
+    return "risk", "No data sources connected. Score cannot be reliably assessed."
 
 
 def _d2(row, score: float):
     if not row["pos_present"]:
-        return "neutral", "POS data not connected — revenue stability assessed with lower confidence (neutral 50)."
+        return "neutral", "POS data not connected. Revenue stability assessed with lower confidence (neutral 50)."
     cv   = float(row["revenue_cv"])
     sent = _sentiment(score)
     if sent == "positive":
         return sent, f"Monthly revenue is stable (CV {cv:.1%}), supporting predictable repayment capacity."
     if sent == "neutral":
-        return sent, f"Moderate revenue volatility (CV {cv:.1%}) — note the impact on repayment predictability."
+        return sent, f"Moderate revenue volatility (CV {cv:.1%}) . Note the impact on repayment predictability."
     return sent, f"High revenue instability (CV {cv:.1%}) creates significant repayment uncertainty."
 
 
 def _d3(row, score: float):
     if not row["bank_present"]:
-        return "neutral", "Bank data not connected — cash-flow strength assessed with lower confidence (neutral 50)."
+        return "neutral", "Bank data not connected. Cash-flow strength assessed with lower confidence (neutral 50)."
     margin = float(row["cash_flow_margin"])
     if margin >= 0.30:
-        return "positive", f"Strong net cash inflow margin of {margin:.0%} — exceeds the 30% benchmark."
+        return "positive", f"Strong net cash inflow margin of {margin:.0%}: exceeds the 30% benchmark."
     sent = _sentiment(score)
     if sent == "positive":
         # score=75 means margin is approaching but below 30%
-        return sent, f"Solid cash inflow margin of {margin:.0%} — approaching the 30% benchmark."
+        return sent, f"Solid cash inflow margin of {margin:.0%}: approaching the 30% benchmark."
     if sent == "neutral":
-        return sent, f"Adequate cash inflow margin of {margin:.0%} — below the 30% benchmark target."
-    return sent, f"Weak cash inflow margin of {margin:.0%} — may be insufficient to service new debt."
+        return sent, f"Adequate cash inflow margin of {margin:.0%}: below the 30% benchmark target."
+    return sent, f"Weak cash inflow margin of {margin:.0%}: may be insufficient to service new debt."
 
 
 def _d4(row, score: float):
     if not row["accounting_present"]:
-        return "neutral", "Accounting data not connected — debt burden assessed with lower confidence (neutral 50)."
+        return "neutral", "Accounting data not connected. Debt burden assessed with lower confidence (neutral 50)."
     dtr  = float(row["debt_to_revenue"])
     dscr = float(row["dscr_proxy"])
     debt = float(row["existing_debt"])
     if debt == 0:
-        return "positive", "No existing debt — full repayment capacity available for new borrowing."
+        return "positive", "No existing debt: full repayment capacity available for new borrowing."
     sent = _sentiment(score)
     if sent == "positive":
         return sent, f"Low debt burden ({dtr:.0%} debt-to-revenue) and strong repayment capacity (DSCR {dscr:.2f}×)."
     if sent == "neutral":
-        return sent, f"Moderate debt levels ({dtr:.0%} debt-to-revenue) — DSCR of {dscr:.2f}× is below the 1.5× benchmark."
-    return sent, f"High debt-to-revenue ({dtr:.0%}) and weak DSCR ({dscr:.2f}×) — limited capacity for new borrowing."
+        return sent, f"Moderate debt levels ({dtr:.0%} debt-to-revenue). DSCR of {dscr:.2f}x is below the 1.5x benchmark."
+    return sent, f"High debt-to-revenue ({dtr:.0%}) and weak DSCR ({dscr:.2f}x): limited capacity for new borrowing."
 
 
 def _d5(row, score: float):
     if not row["accounting_present"]:
-        return "neutral", "Accounting data not connected — prime cost assessed with lower confidence (neutral 50)."
+        return "neutral", "Accounting data not connected. Prime cost assessed with lower confidence (neutral 50)."
     pcr = float(row["prime_cost_ratio"])
     if score >= 100.0:
-        return "positive", f"Prime cost of {pcr:.0%} — within the healthy benchmark (≤60%)."
+        return "positive", f"Prime cost of {pcr:.0%}: within the healthy benchmark (under 60%)."
     if score >= 75.0:
-        return "positive", f"Prime cost of {pcr:.0%} — in the caution band (60–65%); margins are under mild pressure."
+        return "positive", f"Prime cost of {pcr:.0%}: in the caution band (60-65%). Margins are under mild pressure."
     if score >= 50.0:
-        return "neutral",  f"Prime cost of {pcr:.0%} — in the warning zone (65–70%); operating efficiency is below benchmark."
+        return "neutral",  f"Prime cost of {pcr:.0%}: in the warning zone (65-70%). Operating efficiency is below benchmark."
     if score >= 25.0:
-        return "risk",     f"Prime cost of {pcr:.0%} — above the risk threshold (70–80%); margins are heavily compressed."
-    return "risk", f"Prime cost of {pcr:.0%} — in the danger zone (>80%); operating margins are critically compressed."
+        return "risk",     f"Prime cost of {pcr:.0%}: above the risk threshold (70-80%). Margins are heavily compressed."
+    return "risk", f"Prime cost of {pcr:.0%}: in the danger zone (above 80%). Operating margins are critically compressed."
 
 
 def _d6(row, score: float):
     if not row["accounting_present"]:
-        return "neutral", "Accounting data not connected — rent pressure assessed with lower confidence (neutral 50)."
+        return "neutral", "Accounting data not connected. Rent pressure assessed with lower confidence (neutral 50)."
     rtr = float(row["rent_to_revenue"])
     if score >= 80.0:
-        return "positive", f"Rent-to-revenue of {rtr:.1%} — low fixed-cost occupancy pressure."
+        return "positive", f"Rent-to-revenue of {rtr:.1%}: low fixed-cost occupancy pressure."
     if score >= 60.0:
-        return "neutral",  f"Rent-to-revenue of {rtr:.1%} — in the occupancy caution band (10–12%)."
+        return "neutral",  f"Rent-to-revenue of {rtr:.1%}: in the occupancy caution band (10-12%)."
     if score >= 30.0:
         # score=30 has sentiment "risk" (30 < 40 threshold)
-        return "risk",     f"Rent-to-revenue of {rtr:.1%} — high fixed-cost pressure (12–15%)."
-    return "risk", f"Rent-to-revenue of {rtr:.1%} — very high occupancy pressure; exceeds the 15% risk threshold."
+        return "risk",     f"Rent-to-revenue of {rtr:.1%}: high fixed-cost pressure (12-15%)."
+    return "risk", f"Rent-to-revenue of {rtr:.1%}: very high occupancy pressure, exceeds the 15% risk threshold."
 
 
 def _d7(row, score: float):
     if not row["pos_present"]:
-        return "neutral", "POS data not connected — demand quality assessed with lower confidence (neutral 50)."
+        return "neutral", "POS data not connected. Demand quality assessed with lower confidence (neutral 50)."
     avg_check = float(row["average_check"])
     covers    = float(row["covers_per_seat_month"])
     revpash   = float(row["revpash"])
     sent      = _sentiment(score)
     if sent == "positive":
         return sent, (
-            f"Strong POS demand quality — average check €{avg_check:.0f}, "
+            f"Strong POS demand quality: average check €{avg_check:.0f}, "
             f"{covers:.1f} covers/seat/month, RevPASH €{revpash:.2f}/seat-hour "
-            f"— all above-average relative to peer restaurants."
+            f", all above-average relative to peer restaurants."
         )
     if sent == "neutral":
         return sent, (
-            f"Moderate POS demand quality — average check €{avg_check:.0f}, "
+            f"Moderate POS demand quality: average check €{avg_check:.0f}, "
             f"{covers:.1f} covers/seat/month relative to peer restaurants."
         )
     return sent, (
-        f"Below-average POS demand quality — average check €{avg_check:.0f}, "
+        f"Below-average POS demand quality: average check €{avg_check:.0f}, "
         f"{covers:.1f} covers/seat/month, RevPASH €{revpash:.2f}/seat-hour "
         f"relative to peer restaurants."
     )
@@ -419,7 +419,7 @@ def _d7(row, score: float):
 
 def _d8(row, score: float):
     if not row["pos_present"]:
-        return "neutral", "POS data not connected — concentration risk assessed with lower confidence (neutral 50)."
+        return "neutral", "POS data not connected. Concentration risk assessed with lower confidence (neutral 50)."
     ds   = float(row["delivery_share"])
     ws   = float(row["weekend_share"])
     cv   = float(row["revenue_cv"])
@@ -429,7 +429,7 @@ def _d8(row, score: float):
     if ws > 0.60: flags.append(f"weekend revenue share {ws:.0%}")
     if cv > 0.20: flags.append(f"high seasonality CV {cv:.1%}")
     if sent == "positive":
-        return sent, "Low concentration risk — revenue is stable and spread across time and channels."
+        return sent, "Low concentration risk: revenue is stable and spread across time and channels."
     if sent == "neutral":
         flag_text = "; ".join(flags) if flags else f"delivery share {ds:.0%} and weekend share {ws:.0%}"
         return sent, f"Moderate concentration risk: {flag_text}."
@@ -441,15 +441,15 @@ def _d9(row, score: float):
     years = float(row["years_active"])
     if years < 1.0:
         return "risk", (
-            f"Restaurant opened less than 1 year ago ({years:.2f} years) — "
+            f"Restaurant opened less than 1 year ago ({years:.2f} years): "
             "below common lender eligibility thresholds."
         )
     sent = _sentiment(score)
     if sent == "positive":
         return sent, f"Well-established restaurant with {years:.1f} years of operating history."
     if sent == "neutral":
-        return sent, f"Restaurant has {years:.1f} years of operating history — some maturity established."
-    return sent, f"Limited operating history ({years:.1f} years) — lenders may require additional evidence."
+        return sent, f"Restaurant has {years:.1f} years of operating history. Some maturity established."
+    return sent, f"Limited operating history ({years:.1f} years). Lenders may require additional evidence."
 
 
 _DRIVER_FNS = [
@@ -533,7 +533,7 @@ if __name__ == "__main__":
     SEP2 = "-" * 64
 
     print(SEP)
-    print("ForkFund scoring engine — smoke test")
+    print("ForkFund scoring engine: smoke test")
     print(SEP)
 
     metrics = get_lender_dashboard_data(data_dir)
@@ -599,7 +599,7 @@ if __name__ == "__main__":
         print(f"  {grade}: {count:>3}  {bar}")
 
     print(f"\n{SEP2}")
-    print("Score drivers — demo restaurants")
+    print("Score drivers: demo restaurants")
     print(SEP2)
 
     pop_ctx = build_pop_context(metrics)

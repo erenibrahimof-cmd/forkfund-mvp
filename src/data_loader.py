@@ -74,7 +74,7 @@ def _years_active(registration_date) -> float:
     capped at 10 (consistent with get_years_active() in generate_synthetic_data.py).
 
     Levant Express (registered 2025-01-10): raw ≈ 0.972, displays as 1.0 when
-    rounded to one decimal place — matching the validation report.
+    rounded to one decimal place, matching the validation report.
     """
     if isinstance(registration_date, str):
         registration_date = datetime.date.fromisoformat(registration_date)
@@ -438,7 +438,7 @@ if __name__ == "__main__":
     print(f"  lenders     : {len(raw['lenders'])} rows")
 
     validate_raw_data(raw)
-    print("\nvalidate_raw_data: OK — all checks passed")
+    print("\nvalidate_raw_data: OK: all checks passed")
 
     metrics = compute_restaurant_metrics(raw)
     print(f"\ncompute_restaurant_metrics: OK")
@@ -473,7 +473,7 @@ if __name__ == "__main__":
         print(f"  data_completeness       : {row['data_completeness']:.0f}%")
 
     print("\n" + "-" * 60)
-    print("Lender dashboard — first 5 rows (selected columns)")
+    print("Lender dashboard: first 5 rows (selected columns)")
     print("-" * 60)
     dashboard = get_lender_dashboard_data(data_dir)
     display_cols = [

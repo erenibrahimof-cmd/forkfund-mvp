@@ -69,6 +69,18 @@ SCORE_LABELS = {
 }
 
 GRADE_ORDER = list("ABCDE")
+GRADE_CIRCLE_COLORS = {
+    "A": ("#0B6B56", "rgba(11,107,86,0.3)"),
+    "B": ("#1565A8", "rgba(21,101,168,0.3)"),
+    "C": ("#B8860B", "rgba(184,134,11,0.3)"),
+    "D": ("#B45309", "rgba(180,83,9,0.3)"),
+    "E": ("#C0392B", "rgba(192,57,43,0.3)"),
+}
+
+def grade_circle_color(grade: str) -> tuple[str, str]:
+    return GRADE_CIRCLE_COLORS.get(str(grade).upper(), ("#556480", "rgba(85,100,128,0.3)"))
+
+
 
 import time
 
@@ -252,6 +264,13 @@ def inject_styles() -> None:
                 padding: 0.85rem 0.95rem;
                 margin-bottom: 0.65rem;
             }
+            .ff-driver-watch {
+                border-left: 4px solid #C49A2E;
+                background: #FBF4E0;
+                border-radius: 8px;
+                padding: 0.85rem 0.95rem;
+                margin-bottom: 0.65rem;
+            }
             .ff-status-card {
                 border: 1px solid #e5e7eb;
                 border-radius: 8px;
@@ -413,7 +432,15 @@ def source_status_card(label: str, connected: Any) -> str:
 
 
 def driver_card(driver: dict[str, Any], kind: str) -> str:
-    css_class = "ff-driver-positive" if kind == "positive" else "ff-driver-risk"
+    if kind == "positive":
+        css_class = "ff-driver-positive"
+        label = "Strength"
+    elif kind == "watch":
+        css_class = "ff-driver-watch"
+        label = "Watch point"
+    else:
+        css_class = "ff-driver-risk"
+        label = "Risk driver"
     dim_key = driver.get("dimension", "")
     label = DIMENSION_LABELS.get(dim_key, str(dim_key).replace("_", " ").title())
     sub_score = format_score(driver.get("sub_score"))
@@ -566,6 +593,8 @@ def render_login_page() -> None:
     """Full-page login / register screen."""
     _, centre, _ = st.columns([1, 1.6, 1])
     with centre:
+        if st.session_state.pop("just_signed_out", False):
+            st.success("You have been signed out successfully.")
         st.markdown(
             "<div style='text-align:center;padding:2.5rem 0 1.5rem 0;'>"
             "<div style='font-size:2rem;font-weight:800;color:#0D1F3C;"
@@ -848,7 +877,7 @@ def render_restaurant_dashboard(data: dict) -> None:
         unsafe_allow_html=True,
     )
     sum_cols[1].markdown(
-        metric_card("Lender responses", str(n_offers), "Across all your requests"),
+        metric_card("Lender responses", str(n_offers) if n_offers > 0 else "Awaiting", "Across all your requests"),
         unsafe_allow_html=True,
     )
     sum_cols[2].markdown(
@@ -1075,8 +1104,8 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
         )
         col1, col2 = st.columns(2)
         col1.text_input("Restaurant name", key="w_name",
-                        value=st.session_state.get("w_name",
-                              st.session_state.get("display_name", "")))
+                        value=st.session_state.get("w_name") or
+                              st.session_state.get("display_name", ""))
         cities = ["Amsterdam", "Rotterdam", "Utrecht",
                   "The Hague", "Eindhoven", "Groningen", "Other"]
         default_city = st.session_state.get("w_city_val", "Rotterdam")
@@ -1234,9 +1263,9 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
             "letter-spacing:0.05em;'>Lenders responded</div></div>"
             "</div></div>"
             f"<div style='text-align:center;'>"
-            f"<div style='width:90px;height:90px;border-radius:50%;background:#0B6B56;"
+            f"<div style='width:90px;height:90px;border-radius:50%;background:{grade_circle_color(grade)[0]};"
             "display:flex;align-items:center;justify-content:center;"
-            "box-shadow:0 0 0 4px rgba(11,107,86,0.3);margin:0 auto 0.4rem auto;'>"
+            f"box-shadow:0 0 0 4px {grade_circle_color(grade)[1]};margin:0 auto 0.4rem auto;'>"
             f"<div style='font-size:1.8rem;font-weight:800;color:#FFFFFF;'>{grade}</div>"
             "</div>"
             f"<div style='color:#FFFFFF;font-weight:700;font-size:1.1rem;'>{score}/100</div>"
@@ -1312,24 +1341,24 @@ def render_restaurant_passport_page(data):
         f"<div style='margin-bottom:1.25rem;'>"
         f"<span class='ff-badge {grade_css}' style='font-size:0.8rem;padding:0.25rem 0.8rem;'>Grade {grade}</span>"
         f"{risk_b}</div>"
-        "<div style='display:flex;gap:2.5rem;'>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{rev}</div>"
+        "<div style='display:flex;gap:1.2rem;'>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{rev}</div>"
         "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;"
         "text-transform:uppercase;letter-spacing:0.05em;'>Annual revenue</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{cv_pct}</div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{cv_pct}</div>"
         "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;"
         "text-transform:uppercase;letter-spacing:0.05em;'>Revenue volatility</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{dscr}&times;</div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{dscr}&times;</div>"
         "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;"
-        "text-transform:uppercase;letter-spacing:0.05em;'>DSCR proxy</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{compl}</div>"
+        "text-transform:uppercase;letter-spacing:0.05em;'>Debt coverage</div></div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{compl}</div>"
         "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;"
         "text-transform:uppercase;letter-spacing:0.05em;'>Data completeness</div></div>"
         "</div></div>"
-        "<div style='text-align:center;min-width:140px;'>"
-        f"<div style='width:110px;height:110px;border-radius:50%;background:#0B6B56;"
+        "<div style='text-align:center;min-width:110px;'>"
+        f"<div style='width:95px;height:95px;border-radius:50%;background:{grade_circle_color(grade)[0]};"
         "display:flex;flex-direction:column;align-items:center;justify-content:center;"
-        "margin:0 auto 0.6rem auto;box-shadow:0 0 0 4px rgba(11,107,86,0.3);'>"
+        f"margin:0 auto 0.6rem auto;box-shadow:0 0 0 4px {grade_circle_color(grade)[1]};'>"
         f"<div style='font-size:2.2rem;font-weight:800;color:#FFFFFF;line-height:1;'>{grade}</div></div>"
         "<div style='color:#A8B8D0;font-size:0.78rem;'>ForkFund Score</div>"
         f"<div style='color:#FFFFFF;font-size:1.3rem;font-weight:800;'>{score} "
@@ -1367,7 +1396,10 @@ def render_restaurant_passport_page(data):
     st.markdown("### What to improve")
     if driver_result["top_risk"]:
         for driver in driver_result["top_risk"][:3]:
-            st.markdown(driver_card(driver, "risk"), unsafe_allow_html=True)
+            kind = driver.get("sentiment", "risk")
+            if kind not in ("risk", "watch"):
+                kind = "risk"
+            st.markdown(driver_card(driver, kind), unsafe_allow_html=True)
 
 
 def render_my_offers_page(data):
@@ -1726,18 +1758,28 @@ def render_submit_offer_page(data: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    # Restaurant request summary
+    # Restaurant context: grade + score + request
+    grade_css_offer = grade_class(scored_row["grade"])
     st.markdown(
-        f"<div style='background:#F2F5F9;border:1px solid #DDE4EE;"
-        f"border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.5rem;'>"
-        f"<div style='font-size:0.75rem;font-weight:700;color:#556480;"
-        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem;'>"
-        f"Restaurant request</div>"
-        f"<div style='font-size:1rem;color:#0D1F3C;'>"
+        f"<div style='background:#0D1F3C;border-radius:10px;padding:1rem 1.4rem;"
+        f"margin-bottom:1.5rem;display:flex;align-items:center;gap:2rem;'>"
+        f"<div style='text-align:center;'>"
+        f"<div style='width:56px;height:56px;border-radius:50%;background:{grade_circle_color(scored_row['grade'])[0]};"
+        f"display:flex;align-items:center;justify-content:center;margin:0 auto 0.25rem;'>"
+        f"<span style='font-size:1.4rem;font-weight:800;color:#FFFFFF;'>"
+        f"{html_escape(scored_row['grade'])}</span></div>"
+        f"<div style='color:#7A93B4;font-size:0.72rem;'>Score {format_score(scored_row['total_score'])}</div>"
+        f"</div>"
+        f"<div>"
+        f"<div style='font-size:0.68rem;color:#7A93B4;font-weight:700;"
+        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.3rem;'>Loan request</div>"
+        f"<div style='font-size:1.1rem;font-weight:700;color:#FFFFFF;'>"
         f"{html_escape(scored_row['loan_purpose'])} &nbsp;·&nbsp; "
-        f"<strong>{format_eur(scored_row['requested_loan_amount'])}</strong>"
-        f" requested</div>"
-        f"</div>",
+        f"{format_eur(scored_row['requested_loan_amount'])}</div>"
+        f"<div style='font-size:0.82rem;color:#7A93B4;margin-top:0.2rem;'>"
+        f"{html_escape(scored_row['city'])} &nbsp;·&nbsp; "
+        f"{html_escape(scored_row['risk_label'])}</div>"
+        f"</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -1839,6 +1881,13 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
     current_id = selected_restaurant_id(scored)
     index = options.index(current_id) if current_id in options else 0
 
+    # Back to dashboard button for lenders
+    if st.session_state.get("role") == "lender":
+        if st.button("← Back to Dashboard", key="passport_back_btn"):
+            st.session_state["current_page"] = "Lender Dashboard"
+            st.rerun()
+        st.markdown("<div style='margin-bottom:0.5rem;'></div>", unsafe_allow_html=True)
+
     st.title("Credit Passport")
     # Scroll to top when navigating here
     st.components.v1.html(
@@ -1846,12 +1895,9 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
         height=0,
     )
 
-    restaurant_id = st.selectbox(
-        "Passport restaurant",
-        options,
-        index=index,
-        format_func=lambda rid: restaurant_label(scored, rid),
-    )
+    # Lender arrived here from dashboard — use the pre-selected restaurant
+    # No dropdown needed: the lender chose a specific restaurant to view
+    restaurant_id = current_id
     set_selected_restaurant(restaurant_id)
 
     scored_row = row_for(scored, restaurant_id)
@@ -1894,20 +1940,20 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
         f"<div style='margin-bottom:1.25rem;'>"
         f"<span class='ff-badge {grade_css}' style='font-size:0.8rem;padding:0.25rem 0.8rem;'>Grade {grade}</span>"
         f"{risk_b}</div>"
-        "<div style='display:flex;gap:2.5rem;'>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{rev}</div>"
-        "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;'>Annual revenue</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{cv_pct}</div>"
-        "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;'>Revenue volatility</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{dscr}&times;</div>"
-        "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;'>DSCR proxy</div></div>"
-        f"<div><div style='font-size:1.6rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{compl}</div>"
-        "<div style='font-size:0.72rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;'>Data completeness</div></div>"
+        "<div style='display:flex;gap:1.2rem;'>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{rev}</div>"
+        "<div style='font-size:0.65rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;'>Annual revenue</div></div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{cv_pct}</div>"
+        "<div style='font-size:0.65rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;'>Revenue volatility</div></div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{dscr}&times;</div>"
+        "<div style='font-size:0.65rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;'>Debt coverage</div></div>"
+        f"<div><div style='font-size:1.25rem;font-weight:800;color:#FFFFFF;letter-spacing:-0.02em;'>{compl}</div>"
+        "<div style='font-size:0.65rem;color:#7A93B4;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;'>Data completeness</div></div>"
         "</div></div>"
-        f"<div style='text-align:center;min-width:140px;'>"
-        f"<div style='width:110px;height:110px;border-radius:50%;background:#0B6B56;"
+        f"<div style='text-align:center;min-width:110px;'>"
+        f"<div style='width:95px;height:95px;border-radius:50%;background:{grade_circle_color(grade)[0]};"
         f"display:flex;flex-direction:column;align-items:center;justify-content:center;"
-        f"margin:0 auto 0.6rem auto;box-shadow:0 0 0 4px rgba(11,107,86,0.3);'>"
+        f"margin:0 auto 0.6rem auto;box-shadow:0 0 0 4px {grade_circle_color(grade)[1]};'>"
         f"<div style='font-size:2.2rem;font-weight:800;color:#FFFFFF;line-height:1;'>{grade}</div></div>"
         f"<div style='color:#A8B8D0;font-size:0.78rem;'>ForkFund Score</div>"
         f"<div style='color:#FFFFFF;font-size:1.3rem;font-weight:800;'>{score} "
@@ -2031,9 +2077,12 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
             st.markdown("### Top risk drivers")
             if driver_result["top_risk"]:
                 for driver in driver_result["top_risk"]:
-                    st.markdown(driver_card(driver, "risk"), unsafe_allow_html=True)
+                    kind = driver.get("sentiment", "risk")
+                    if kind not in ("risk", "watch"):
+                        kind = "risk"
+                    st.markdown(driver_card(driver, kind), unsafe_allow_html=True)
             else:
-                st.info("No risk drivers are available for this profile.")
+                st.info("No risk drivers available for this profile.")
 
         st.markdown("### Nine scoring dimensions")
         subscores = subscore_frame(scored_row)
@@ -2144,10 +2193,15 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
         default_grades = [prefill_grade]
         default_id     = prefill_id
     else:
-        default_grades = GRADE_ORDER
+        default_grades = ["A", "B"]  # Default to lower-risk profiles
         default_id     = None
 
-    st.write("Filter the restaurant pool and open a selected Credit Passport.")
+    st.markdown(
+        "<div style='color:#556480;font-size:0.95rem;margin-bottom:1rem;'>"
+        "Showing Grade A and B profiles by default. Use filters below to adjust."
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     summary_cards = [
         ("Restaurants", f"{len(scored)}", "Synthetic profiles in the pool"),
@@ -2169,32 +2223,72 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
         )
         st.dataframe(crosstab, use_container_width=True)
 
+    # ── Initialize filter state on first visit only ───────────────────────────
+    # Restore saved filters if returning from Credit Passport
+    filter_keys = [
+        "lf_cities", "lf_grades", "lf_risk_labels",
+        "lf_revenue_bands", "lf_loan_purposes", "lf_loan_range",
+        "lf_min_completeness", "lf_prime_cost",
+        "lf_max_rent", "lf_max_delivery", "lf_max_weekend",
+    ]
+    for k in filter_keys:
+        saved = st.session_state.pop(f"_saved_{k}", None)
+        if saved is not None:
+            st.session_state[k] = saved
+
+    if "lf_cities" not in st.session_state:
+        st.session_state["lf_cities"] = sorted(scored["city"].unique().tolist())
+    if "lf_grades" not in st.session_state:
+        st.session_state["lf_grades"] = list(default_grades)
+    if "lf_risk_labels" not in st.session_state:
+        st.session_state["lf_risk_labels"] = sorted(scored["risk_label"].unique().tolist())
+    if "lf_revenue_bands" not in st.session_state:
+        st.session_state["lf_revenue_bands"] = sorted(scored["revenue_band"].unique().tolist())
+    if "lf_loan_purposes" not in st.session_state:
+        st.session_state["lf_loan_purposes"] = sorted(scored["loan_purpose"].unique().tolist())
+    if "lf_loan_range" not in st.session_state:
+        st.session_state["lf_loan_range"] = (
+            int(scored["requested_loan_amount"].min()),
+            int(scored["requested_loan_amount"].max()),
+        )
+    if "lf_min_completeness" not in st.session_state:
+        st.session_state["lf_min_completeness"] = 0
+    if "lf_prime_cost" not in st.session_state:
+        st.session_state["lf_prime_cost"] = 100
+    if "lf_max_rent" not in st.session_state:
+        st.session_state["lf_max_rent"] = 30
+    if "lf_max_delivery" not in st.session_state:
+        st.session_state["lf_max_delivery"] = 100
+    if "lf_max_weekend" not in st.session_state:
+        st.session_state["lf_max_weekend"] = 100
+
     with st.expander("Dashboard filters", expanded=True):
         filter_cols = st.columns(3)
         cities = filter_cols[0].multiselect(
             "City",
             sorted(scored["city"].unique()),
-            default=sorted(scored["city"].unique()),
+            key="lf_cities",
         )
         grades = filter_cols[1].multiselect(
-            "Grade", GRADE_ORDER, default=default_grades
+            "Grade", GRADE_ORDER,
+            key="lf_grades",
         )
         risk_labels = filter_cols[2].multiselect(
             "Risk label",
             sorted(scored["risk_label"].unique()),
-            default=sorted(scored["risk_label"].unique()),
+            key="lf_risk_labels",
         )
 
         filter_cols = st.columns(3)
         revenue_bands = filter_cols[0].multiselect(
             "Revenue band",
             sorted(scored["revenue_band"].unique()),
-            default=sorted(scored["revenue_band"].unique()),
+            key="lf_revenue_bands",
         )
         loan_purposes = filter_cols[1].multiselect(
             "Loan purpose",
             sorted(scored["loan_purpose"].unique()),
-            default=sorted(scored["loan_purpose"].unique()),
+            key="lf_loan_purposes",
         )
         min_loan = int(scored["requested_loan_amount"].min())
         max_loan = int(scored["requested_loan_amount"].max())
@@ -2202,31 +2296,31 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
             "Requested loan amount",
             min_value=min_loan,
             max_value=max_loan,
-            value=(min_loan, max_loan),
             step=25_000,
+            key="lf_loan_range",
         )
 
         min_completeness = st.slider(
             "Minimum data completeness",
             min_value=0,
             max_value=100,
-            value=0,
             step=10,
+            key="lf_min_completeness",
         )
 
     with st.expander("Optional operating-risk filters", expanded=False):
         risk_filter_cols = st.columns(4)
         max_prime_cost = risk_filter_cols[0].slider(
-            "Max prime cost ratio", 0, 100, 100, 5
+            "Max prime cost ratio", 0, 100, step=5, key="lf_prime_cost"
         )
         max_rent = risk_filter_cols[1].slider(
-            "Max rent-to-revenue", 0, 30, 30, 1
+            "Max rent-to-revenue", 0, 30, step=1, key="lf_max_rent"
         )
         max_delivery = risk_filter_cols[2].slider(
-            "Max delivery share", 0, 100, 100, 5
+            "Max delivery share", 0, 100, step=5, key="lf_max_delivery"
         )
         max_weekend = risk_filter_cols[3].slider(
-            "Max weekend share", 0, 100, 100, 5
+            "Max weekend share", 0, 100, step=5, key="lf_max_weekend"
         )
 
     filtered = scored[
@@ -2241,7 +2335,7 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
         & (scored["rent_to_revenue"] <= max_rent / 100)
         & (scored["delivery_share"] <= max_delivery / 100)
         & (scored["weekend_share"] <= max_weekend / 100)
-    ].copy()
+    ].copy().sort_values("total_score", ascending=False)
 
     st.markdown(f"### Matching restaurants ({len(filtered)})")
 
@@ -2296,6 +2390,16 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
             if c_btn.button("View passport →", key=f"lender_open_{rid}",
                             use_container_width=True):
                 set_selected_restaurant(rid)
+                # Save all current filter values before leaving the dashboard
+                filter_keys = [
+                    "lf_cities", "lf_grades", "lf_risk_labels",
+                    "lf_revenue_bands", "lf_loan_purposes", "lf_loan_range",
+                    "lf_min_completeness", "lf_prime_cost",
+                    "lf_max_rent", "lf_max_delivery", "lf_max_weekend",
+                ]
+                for k in filter_keys:
+                    if k in st.session_state:
+                        st.session_state[f"_saved_{k}"] = st.session_state[k]
                 st.session_state["current_page"] = "Credit Passport"
                 st.session_state["show_offer_form"] = False
                 st.rerun()
@@ -2480,6 +2584,7 @@ def render_sidebar(data: dict, role: str) -> str:
     if st.sidebar.button("Sign out", key="signout_btn"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
+        st.session_state["just_signed_out"] = True
         st.rerun()
 
     st.sidebar.markdown(

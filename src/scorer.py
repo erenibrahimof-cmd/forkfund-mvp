@@ -300,8 +300,8 @@ def score_all_restaurants(metrics_df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def _sentiment(sub_score: float) -> str:
-    if sub_score >= 75.0: return "positive"
-    if sub_score >= 40.0: return "neutral"
+    if sub_score >= 70.0: return "positive"
+    if sub_score >= 50.0: return "neutral"
     return "risk"
 
 
@@ -504,10 +504,29 @@ def generate_score_drivers(row: pd.Series, score_breakdown: dict) -> dict:
         key=lambda d: -d["sub_score"],
     )[:3]
 
-    top_risk = sorted(
+    explicit_risks = sorted(
         [d for d in drivers if d["sentiment"] == "risk"],
         key=lambda d: d["sub_score"],
-    )[:3]
+    )
+
+    # Always ensure at least 2 watch points for lenders:
+    # if fewer than 2 explicit risk drivers, add the lowest-scoring neutral dims
+    if len(explicit_risks) < 2:
+        neutral_sorted = sorted(
+            [d for d in drivers if d["sentiment"] == "neutral"],
+            key=lambda d: d["sub_score"],
+        )
+        needed = 2 - len(explicit_risks)
+        watch_points = []
+        for d in neutral_sorted[:needed]:
+            watch_points.append({
+                **d,
+                "sentiment": "watch",
+                "text": d["text"] + " — monitor this dimension before lending.",
+            })
+        top_risk = (explicit_risks + watch_points)[:3]
+    else:
+        top_risk = explicit_risks[:3]
 
     return {
         "drivers":      drivers,

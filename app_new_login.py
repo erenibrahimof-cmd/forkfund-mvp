@@ -89,17 +89,17 @@ DEMO_ACCOUNTS = {
     "restaurant@forkfund.io": {
         "password": "demo1234",
         "role": "restaurant",
-        "display_name": "Trattoria Pietro",
-        "restaurant_name": "Trattoria Pietro",
+        "display_name": "Café Vista",
+        "restaurant_name": "Café Vista",
         "existing_requests": [
             {
                 "id": 1,
-                "loan_amount": 75000,
+                "loan_amount": 150000,
                 "loan_purpose": "Renovation",
                 "status": "Active",
                 "n_offers": 2,
                 "created_at": "2026-05-20",
-                "restaurant_id": 41,
+                "restaurant_id": 46,
             }
         ],
     },
@@ -497,10 +497,7 @@ def restaurant_label(scored: pd.DataFrame, restaurant_id: int) -> str:
 
 def selected_restaurant_id(scored: pd.DataFrame) -> int:
     if "selected_restaurant_id" not in st.session_state:
-        default_id = int(
-            scored.loc[scored["legal_name"] == "Trattoria Pietro", "restaurant_id"].iloc[0]
-        )
-        st.session_state["selected_restaurant_id"] = default_id
+        st.session_state["selected_restaurant_id"] = 46  # Café Vista default
     return int(st.session_state["selected_restaurant_id"])
 
 
@@ -638,9 +635,36 @@ def render_login_page() -> None:
                     st.session_state["display_name"]  = account["display_name"]
                     st.session_state["verified"]      = True
                     if account["role"] == "restaurant":
-                        st.session_state["demo_restaurant_name"] = account["restaurant_name"]
-                        st.session_state["onboarding_complete"]  = True
-                        st.session_state["loan_requests"] = account.get("existing_requests", [])
+                        st.session_state["demo_restaurant_name"]   = account["restaurant_name"]
+                        st.session_state["onboarding_complete"]    = True
+                        st.session_state["loan_requests"]          = account.get("existing_requests", [])
+                        st.session_state["selected_restaurant_id"] = 46
+                        # Clear any leftover wizard state from previous sessions
+                        for wk in ["w_name","w_city","w_cuisine","w_seats","w_loan",
+                                   "w_purpose","w_years","w_bank_connected",
+                                   "w_pos_connected","w_acct_connected",
+                                   "wizard_step","showing_wizard","showing_verification"]:
+                            st.session_state.pop(wk, None)
+                        st.session_state["current_page"] = "My Dashboard"
+                        # Pre-seed ABN AMRO offer so the loop always shows in demo
+                        if "live_offers" not in st.session_state or not st.session_state["live_offers"].get(46):
+                            import datetime as _dt
+                            st.session_state["live_offers"] = {
+                                46: [{
+                                    "lender_name": "ABN AMRO",
+                                    "lender_type": "Bank",
+                                    "status": "Offer submitted",
+                                    "offer_amount": 150000,
+                                    "rate_lo": 7.5,
+                                    "rate_hi": 7.5,
+                                    "term": "24 months",
+                                    "loan_type": "Renovation loan",
+                                    "conditions": [],
+                                    "note": "We reviewed your profile and are interested in supporting your renovation. Please reach out to schedule a call.",
+                                    "valid_until": str(_dt.date.today() + _dt.timedelta(days=30)),
+                                    "is_live": True,
+                                }]
+                            }
                     st.rerun()
                 else:
                     st.error("Email or password incorrect.")
@@ -760,7 +784,7 @@ def render_login_page() -> None:
                 reg_name = st.text_input(
                     "Institution name" if is_lender_reg else "Restaurant name",
                     key="reg_name",
-                    placeholder="e.g. ABN AMRO" if is_lender_reg else "e.g. Trattoria Pietro",
+                    placeholder="e.g. ABN AMRO" if is_lender_reg else "e.g. Café Vista",
                 )
                 reg_email = st.text_input("Email address", key="reg_email",
                                           placeholder="you@example.com")
@@ -869,18 +893,25 @@ def render_restaurant_dashboard(data: dict) -> None:
     )
 
     # Summary strip
-    n_req    = len(loan_requests)
-    n_offers = sum(r.get("n_offers", 0) for r in loan_requests)
-    sum_cols = st.columns(3)
+    live_offers_all = st.session_state.get("live_offers", {})
+    scored = data["scored"]
+    total_offers = 0
+    for r in loan_requests:
+        rid = r.get("restaurant_id", 0)
+        n_live = len(live_offers_all.get(rid, []))
+        if n_live > 0:
+            # Count live + synthetic when there are live offers
+            scored_row = row_for(scored, rid)
+            n_synthetic = len(generate_lender_offers(scored_row, data["lenders"]))
+            total_offers += n_live + n_synthetic
+        # If no live offers, show 0 (passport is live but no responses yet)
+    n_offers = total_offers
+    sum_cols = st.columns(2)
     sum_cols[0].markdown(
-        metric_card("Active requests", str(n_req), "Loan applications in progress"),
-        unsafe_allow_html=True,
-    )
-    sum_cols[1].markdown(
         metric_card("Lender responses", str(n_offers) if n_offers > 0 else "Awaiting", "Across all your requests"),
         unsafe_allow_html=True,
     )
-    sum_cols[2].markdown(
+    sum_cols[1].markdown(
         metric_card("Profile status", "✅ Verified", "KvK · PSD2 · Data sources"),
         unsafe_allow_html=True,
     )
@@ -901,7 +932,7 @@ def render_restaurant_dashboard(data: dict) -> None:
             if req.get("restaurant_id"):
                 rid = req["restaurant_id"]
             else:
-                demo_name = st.session_state.get("demo_restaurant_name", "Trattoria Pietro")
+                demo_name = st.session_state.get("demo_restaurant_name", "Café Vista")
                 matches = scored[scored["legal_name"] == demo_name]
                 rid = int(matches.iloc[0]["restaurant_id"]) if not matches.empty else int(scored.iloc[0]["restaurant_id"])
                 req["restaurant_id"] = rid
@@ -910,7 +941,14 @@ def render_restaurant_dashboard(data: dict) -> None:
             grade     = html_escape(row["grade"])
             grade_css = grade_class(row["grade"])
             score     = format_score(row["total_score"])
-            n_off     = req.get("n_offers", 0)
+            # Count live offers only for card display
+            live_for_rid = st.session_state.get("live_offers", {}).get(rid, [])
+            n_live_for_rid = len(live_for_rid)
+            if n_live_for_rid > 0:
+                n_synthetic_for_rid = len(generate_lender_offers(row, data["lenders"]))
+                n_off = n_live_for_rid + n_synthetic_for_rid
+            else:
+                n_off = 0
             status_color = "#0B6B56" if req["status"] == "Active" else "#556480"
 
             st.markdown(
@@ -951,7 +989,7 @@ def render_restaurant_dashboard(data: dict) -> None:
                 st.session_state["current_page"] = "My Credit Passport"
                 st.rerun()
             if btn_cols[2].button(
-                f"View {n_off} offers",
+                "View current offers",
                 key=f"view_offers_{req['id']}",
                 use_container_width=True,
             ):
@@ -991,12 +1029,12 @@ def generate_lender_offers(scored_row, lenders):
         random_state=int(scored_row["restaurant_id"])
     )
     statuses = {
-        "A": ["Offer submitted", "Offer submitted", "Interested", "Offer submitted"],
-        "B": ["Offer submitted", "Interested", "Awaiting data"],
-        "C": ["Interested", "Awaiting data"],
-        "D": ["Conditional interest"],
-        "E": ["Conditional interest"],
-    }.get(grade, ["Interested"])
+        "A": ["Offer submitted", "Offer submitted", "Offer submitted", "Offer submitted"],
+        "B": ["Offer submitted", "Offer submitted", "Offer submitted"],
+        "C": ["Offer submitted", "Offer submitted"],
+        "D": ["Offer submitted"],
+        "E": ["Offer submitted"],
+    }.get(grade, ["Offer submitted"])
     offers = []
     today = datetime.date.today()
     for i, (_, lender) in enumerate(sample.iterrows()):
@@ -1106,30 +1144,37 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
         col1.text_input("Restaurant name", key="w_name",
                         value=st.session_state.get("w_name") or
                               st.session_state.get("display_name", ""))
-        cities = ["Amsterdam", "Rotterdam", "Utrecht",
+        cities = ["Select city...", "Amsterdam", "Rotterdam", "Utrecht",
                   "The Hague", "Eindhoven", "Groningen", "Other"]
-        default_city = st.session_state.get("w_city_val", "Rotterdam")
-        col2.selectbox("City", cities, key="w_city",
-                       index=cities.index(default_city) if default_city in cities else 0)
-        cuisines = ["French", "Italian", "Dutch", "Asian",
+        col2.selectbox("City", cities, key="w_city", index=0)
+        cuisines = ["Select cuisine...", "French", "Italian", "Dutch", "Asian",
                     "Mediterranean", "American", "Other"]
-        col1.selectbox("Cuisine type", cuisines, key="w_cuisine",
-                       index=cuisines.index("Italian"))
+        col1.selectbox("Cuisine type", cuisines, key="w_cuisine", index=0)
         col2.number_input("Number of seats", min_value=10, max_value=500,
-                          value=48, step=5, key="w_seats")
+                          value=None, step=5, key="w_seats",
+                          placeholder="e.g. 45")
         col3, col4 = st.columns(2)
         col3.number_input("Loan amount needed (EUR)", min_value=25000,
-                          max_value=500000, value=75000, step=5000, key="w_loan")
+                          max_value=500000, value=None, step=5000, key="w_loan",
+                          placeholder="Enter amount...")
         purposes = ["Working capital", "Equipment", "Renovation",
                     "Term loan", "Expansion"]
-        col4.selectbox("Loan purpose", purposes, key="w_purpose",
-                       index=purposes.index("Renovation"))
-        st.slider("Years in operation", 0, 20, 8, key="w_years")
+        col4.selectbox("Loan purpose", ["Select purpose..."] + purposes,
+                       key="w_purpose", index=0)
+        st.slider("Years in operation", 0, 20, 0, key="w_years")
 
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
         if st.button("Continue →", key="wizard_s1"):
             if not st.session_state.get("w_name", "").strip():
                 st.error("Please enter your restaurant name.")
+            elif st.session_state.get("w_city", "Select city...") == "Select city...":
+                st.error("Please select a city.")
+            elif st.session_state.get("w_cuisine", "Select cuisine...") == "Select cuisine...":
+                st.error("Please select a cuisine type.")
+            elif not st.session_state.get("w_loan"):
+                st.error("Please enter a loan amount.")
+            elif st.session_state.get("w_purpose", "Select purpose...") == "Select purpose...":
+                st.error("Please select a loan purpose.")
             else:
                 st.session_state["wizard_step"] = 2
                 st.rerun()
@@ -1195,10 +1240,10 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
         scored = data["scored"]
 
         # Name-to-ID mapping for known demo restaurants
-        KNOWN_DEMO_IDS = {"Trattoria Pietro": 41}
+        KNOWN_DEMO_IDS = {"Café Vista": 46, "Cafe Vista": 46}
 
         entered_name = st.session_state.get("w_name", "").strip()
-        demo_name    = st.session_state.get("demo_restaurant_name", "Trattoria Pietro")
+        demo_name    = st.session_state.get("demo_restaurant_name", "Café Vista")
 
         # Resolve restaurant ID: prefer exact name match, then known mapping, then grade C
         if entered_name in KNOWN_DEMO_IDS:
@@ -1213,9 +1258,9 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
 
         scored_row = scored[scored["restaurant_id"] == restaurant_id].iloc[0]
         st.session_state["selected_restaurant_id"] = restaurant_id
-        st.session_state["demo_restaurant_name"]   = "Trattoria Pietro"
+        st.session_state["demo_restaurant_name"]   = "Café Vista"
 
-        user_name = entered_name or st.session_state.get("display_name", "Trattoria Pietro")
+        user_name = entered_name or st.session_state.get("display_name", "Café Vista")
 
         st.markdown(
             f"<div style='font-size:1.4rem;font-weight:800;color:#0D1F3C;"
@@ -1232,8 +1277,10 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
         peer      = format_pct(scored_row["peer_percentile"], 0, already_percent=True)
         risk_b    = risk_badge(scored_row["risk_label"])
         offers    = generate_lender_offers(scored_row, data["lenders"])
-        loan_amt  = int(st.session_state.get("w_loan", 75000))
-        purpose   = st.session_state.get("w_purpose", "Working capital")
+        loan_amt  = int(st.session_state.get("w_loan") or 150000)
+        purpose   = st.session_state.get("w_purpose", "Renovation")
+        if purpose == "Select purpose...":
+            purpose = "Renovation"
 
         st.markdown(
             "<div style='background:#0D1F3C;border-radius:14px;padding:1.5rem 2rem;"
@@ -1257,10 +1304,10 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
             f"Top {peer}</div>"
             "<div style='font-size:0.7rem;color:#7A93B4;text-transform:uppercase;"
             "letter-spacing:0.05em;'>Peer percentile</div></div>"
-            f"<div><div style='font-size:1.3rem;font-weight:800;color:#C49A2E;'>"
-            f"{len(offers)} offers</div>"
+            f"<div><div style='font-size:0.95rem;font-weight:700;color:#C49A2E;'>"
+            f"Awaiting responses</div>"
             "<div style='font-size:0.7rem;color:#7A93B4;text-transform:uppercase;"
-            "letter-spacing:0.05em;'>Lenders responded</div></div>"
+            "letter-spacing:0.05em;'>Lender offers</div></div>"
             "</div></div>"
             f"<div style='text-align:center;'>"
             f"<div style='width:90px;height:90px;border-radius:50%;background:{grade_circle_color(grade)[0]};"
@@ -1284,7 +1331,7 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
                 "loan_amount":   loan_amt,
                 "loan_purpose":  purpose,
                 "status":        "Active",
-                "n_offers":      len(offers),
+                "n_offers":      0,
                 "created_at":    str(datetime.date.today()),
                 "restaurant_id": restaurant_id,
             })
@@ -1292,6 +1339,7 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
             st.session_state["onboarding_complete"] = True
             st.session_state["showing_wizard"]      = False
             st.session_state["wizard_step"]         = 1
+            st.session_state["wizard_completed"]    = True  # only apply overrides when wizard was done
             st.rerun()
 
 
@@ -1299,10 +1347,40 @@ def render_restaurant_onboarding_wizard(data: dict) -> None:
 def render_restaurant_passport_page(data):
     scored = data["scored"]
     restaurant_id = selected_restaurant_id(scored)
-    scored_row = row_for(scored, restaurant_id)
+    scored_row = row_for(scored, restaurant_id).copy()
     metrics = data["metrics"]
-    metrics_row = metrics.loc[metrics["restaurant_id"] == restaurant_id].iloc[0]
+    metrics_row = metrics.loc[metrics["restaurant_id"] == restaurant_id].iloc[0].copy()
     offers = generate_lender_offers(scored_row, data["lenders"])
+
+    # Apply wizard overrides ONLY if user completed the wizard this session
+    if st.session_state.get("wizard_completed"):
+        bank = st.session_state.get("w_bank_connected", True)
+        pos  = st.session_state.get("w_pos_connected",  True)
+        acct = st.session_state.get("w_acct_connected", False)
+        n_connected  = sum([bank, pos, acct])
+        actual_compl = round(n_connected / 3 * 100, 1)
+
+        if st.session_state.get("w_name"):
+            scored_row["legal_name"]  = st.session_state["w_name"]
+        if st.session_state.get("w_city") and st.session_state["w_city"] != "Select city...":
+            scored_row["city"]        = st.session_state["w_city"]
+        if st.session_state.get("w_years") is not None:
+            scored_row["years_active"]   = float(st.session_state["w_years"])
+            metrics_row["years_active"]  = float(st.session_state["w_years"])
+        if st.session_state.get("w_loan"):
+            scored_row["requested_loan_amount"]  = float(st.session_state["w_loan"])
+            metrics_row["requested_loan_amount"] = float(st.session_state["w_loan"])
+        if st.session_state.get("w_purpose") and st.session_state["w_purpose"] != "Select purpose...":
+            scored_row["loan_purpose"] = st.session_state["w_purpose"]
+
+        scored_row["data_completeness"]  = actual_compl
+        scored_row["bank_present"]       = float(bank)
+        scored_row["pos_present"]        = float(pos)
+        scored_row["acct_present"]       = float(acct)
+        metrics_row["data_completeness"] = actual_compl
+        metrics_row["bank_present"]      = float(bank)
+        metrics_row["pos_present"]       = float(pos)
+        metrics_row["acct_present"]      = float(acct)
 
     grade     = html_escape(scored_row["grade"])
     grade_css = grade_class(scored_row["grade"])
@@ -1374,15 +1452,28 @@ def render_restaurant_passport_page(data):
 
     btn_cols = st.columns([3, 1])
     with btn_cols[1]:
-        st.markdown('<div class="ff-gold-btn">', unsafe_allow_html=True)
-        if st.button(
-            f"View my {n_off} lender offers",
-            key="restaurant_view_offers_btn",
-            use_container_width=True,
-        ):
-            st.session_state["current_page"] = "My Lender Offers"
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Check if there are real live offers for this restaurant
+        live_offers_for_this = st.session_state.get("live_offers", {}).get(int(restaurant_id), [])
+        has_live_offers = len(live_offers_for_this) > 0
+
+        if has_live_offers:
+            st.markdown('<div class="ff-gold-btn">', unsafe_allow_html=True)
+            if st.button(
+                f"View my {len(live_offers_for_this)} lender offer{'s' if len(live_offers_for_this) != 1 else ''}",
+                key="restaurant_view_offers_btn",
+                use_container_width=True,
+            ):
+                st.session_state["current_page"] = "My Lender Offers"
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            if st.button(
+                "Check lender responses",
+                key="restaurant_view_offers_btn",
+                use_container_width=True,
+            ):
+                st.session_state["current_page"] = "My Lender Offers"
+                st.rerun()
 
     pop_context = build_pop_context(metrics)
     breakdown = score_restaurant(metrics_row, pop_context)
@@ -1412,33 +1503,54 @@ def render_my_offers_page(data):
     live_offers      = st.session_state.get("live_offers", {}).get(rid_key, [])
     synthetic_offers = generate_lender_offers(scored_row, data["lenders"])
 
-    # Enrich synthetic offers with loan type + auto-message
-    loan_types = ["Term loan", "Working capital", "Renovation loan",
-                  "Equipment finance", "Revenue-based finance"]
-    auto_messages = [
-        "We reviewed your profile and would like to discuss a financing arrangement.",
-        "Your revenue stability and data quality stand out. We'd welcome a call.",
-        "Based on your Credit Passport, we see potential for a renovation loan.",
-        "We would like to learn more about your business before making a firm offer.",
-        "Your profile meets our lending criteria. Please reach out to discuss next steps.",
-    ]
+    # For fresh registrations (no live offers yet), don't show synthetic offers
+    has_live_offers = len(live_offers) > 0
     rng = random.Random(rid_key)
-    for i, o in enumerate(synthetic_offers):
-        if "loan_type" not in o:
-            o["loan_type"] = rng.choice(loan_types)
-        if "note" not in o:
-            o["note"] = auto_messages[i % len(auto_messages)]
-        if "term" not in o:
-            o["term"] = rng.choice(["12 months", "24 months", "36 months"])
+    if has_live_offers:
+        # Enrich synthetic offers only when there are live ones to show alongside
+        loan_types = ["Term loan", "Working capital", "Renovation loan",
+                      "Equipment finance", "Revenue-based finance"]
+        auto_messages = [
+            "We reviewed your profile and would like to discuss a financing arrangement.",
+            "Your revenue stability and data quality stand out. We'd welcome a call.",
+            "Based on your Credit Passport, we see potential for a renovation loan.",
+            "We would like to learn more about your business before making a firm offer.",
+            "Your profile meets our lending criteria. Please reach out to discuss next steps.",
+        ]
+        for i, o in enumerate(synthetic_offers):
+            if "loan_type" not in o:
+                o["loan_type"] = rng.choice(loan_types)
+            if "note" not in o:
+                o["note"] = auto_messages[i % len(auto_messages)]
+            if "term" not in o:
+                o["term"] = rng.choice(["12 months", "24 months", "36 months"])
+        all_offers = live_offers + synthetic_offers
+    else:
+        all_offers = []
 
-    all_offers = live_offers + synthetic_offers
-    n          = len(all_offers)
-    n_live     = len(live_offers)
+    n      = len(all_offers)
+    n_live = len(live_offers)
 
     # Restaurant responses stored in session state
     responses = st.session_state.get(f"offer_responses_{rid_key}", {})
 
     st.title("My Lender Offers")
+
+    if not has_live_offers:
+        # Fresh registration — no offers yet
+        st.markdown(
+            "<div style='background:#0D1F3C;border-radius:12px;padding:2.5rem;"
+            "text-align:center;margin-top:1rem;'>"
+            "<div style='font-size:2rem;margin-bottom:1rem;'>📬</div>"
+            "<div style='font-size:1.1rem;font-weight:700;color:#FFFFFF;margin-bottom:0.5rem;'>"
+            "Your passport is live</div>"
+            "<div style='font-size:0.9rem;color:#7A93B4;'>"
+            "Lenders on the platform can now see your Credit Passport. "
+            "Come back soon to check for financing offers.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
 
     if n_live > 0:
         st.markdown(
@@ -1454,21 +1566,20 @@ def render_my_offers_page(data):
         f"<div style='color:#556480;font-size:0.95rem;margin-bottom:1.5rem;'>"
         f"Offers for <strong style='color:#0D1F3C;'>{html_escape(scored_row['legal_name'])}"
         f"</strong> &nbsp;·&nbsp; Grade {html_escape(scored_row['grade'])}"
-        f" &nbsp;·&nbsp; {n} lender{'s' if n!=1 else ''} responded</div>",
+        f" &nbsp;·&nbsp; {n_live} new offer{'s' if n_live!=1 else ''}"
+        f"{f' · {len(all_offers)-n_live} additional indicative offers' if len(all_offers)-n_live > 0 else ''}"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
-    # Summary metrics
-    submitted  = sum(1 for o in all_offers if o.get("status") == "Offer submitted")
-    interested = sum(1 for o in all_offers if o.get("status") == "Interested")
-    rates      = [(o["rate_lo"] + o["rate_hi"]) / 2
-                  for o in all_offers if "rate_lo" in o and "rate_hi" in o]
-    avg_rate   = sum(rates) / len(rates) if rates else 0
+    # Summary metrics — only live offers for the count, all for avg rate
+    rates    = [(o["rate_lo"] + o["rate_hi"]) / 2
+                for o in all_offers if "rate_lo" in o and "rate_hi" in o]
+    avg_rate = sum(rates) / len(rates) if rates else 0
 
-    s_cols = st.columns(3)
-    s_cols[0].markdown(metric_card("Offers submitted", str(submitted), "Ready to review"), unsafe_allow_html=True)
-    s_cols[1].markdown(metric_card("Lenders interested", str(interested), "Reviewing your profile"), unsafe_allow_html=True)
-    s_cols[2].markdown(metric_card("Avg. rate", f"{avg_rate:.1f}%", "Across all responses"), unsafe_allow_html=True)
+    s_cols = st.columns(2)
+    s_cols[0].markdown(metric_card("New offers", str(n_live), "Submitted by lenders on the platform"), unsafe_allow_html=True)
+    s_cols[1].markdown(metric_card("Avg. indicative rate", f"{avg_rate:.1f}%", "Across all responses"), unsafe_allow_html=True)
 
     st.markdown("### Lender responses")
 
@@ -1895,7 +2006,7 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
         height=0,
     )
 
-    # Lender arrived here from dashboard — use the pre-selected restaurant
+    # Lender arrived here from dashboard: use the pre-selected restaurant
     # No dropdown needed: the lender chose a specific restaurant to view
     restaurant_id = current_id
     set_selected_restaurant(restaurant_id)
@@ -2150,16 +2261,6 @@ def render_credit_passport_page(data: dict[str, Any]) -> None:
             use_container_width=True,
         )
 
-        st.markdown("### Detailed scoring breakdown")
-        full_breakdown = subscore_frame(scored_row)
-        full_breakdown["Weight"] = full_breakdown["Weight"] * 100
-        st.dataframe(
-            full_breakdown,
-            hide_index=True,
-            use_container_width=True,
-            column_config=score_column_config(),
-        )
-
 
 def render_lender_dashboard_page(data: dict[str, Any]) -> None:
     scored = data["scored"].copy()
@@ -2198,33 +2299,12 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
 
     st.markdown(
         "<div style='color:#556480;font-size:0.95rem;margin-bottom:1rem;'>"
-        "Showing Grade A and B profiles by default. Use filters below to adjust."
+        "Use the filters below to narrow the restaurant pool. Leave a filter empty to include all."
         "</div>",
         unsafe_allow_html=True,
     )
 
-    summary_cards = [
-        ("Restaurants", f"{len(scored)}", "Synthetic profiles in the pool"),
-        ("Average score", format_score(scored["total_score"].mean()), "Runtime weighted score"),
-        ("A/B profiles", str(int(scored["grade"].isin(["A", "B"]).sum())), "Lower-risk opportunities"),
-        ("D/E profiles", str(int(scored["grade"].isin(["D", "E"]).sum())), "Higher-risk reviews"),
-    ]
-    render_metric_grid(summary_cards, columns=4)
-
-    chart_cols = st.columns(2)
-    with chart_cols[0]:
-        st.markdown("### Grade distribution")
-        grade_counts = scored["grade"].value_counts().reindex(GRADE_ORDER, fill_value=0)
-        st.bar_chart(grade_counts)
-    with chart_cols[1]:
-        st.markdown("### Revenue band by grade")
-        crosstab = pd.crosstab(scored["revenue_band"], scored["grade"]).reindex(
-            columns=GRADE_ORDER, fill_value=0
-        )
-        st.dataframe(crosstab, use_container_width=True)
-
-    # ── Initialize filter state on first visit only ───────────────────────────
-    # Restore saved filters if returning from Credit Passport
+    # ── Initialize filter state (empty = no filter applied) ──────────────────
     filter_keys = [
         "lf_cities", "lf_grades", "lf_risk_labels",
         "lf_revenue_bands", "lf_loan_purposes", "lf_loan_range",
@@ -2236,77 +2316,78 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
         if saved is not None:
             st.session_state[k] = saved
 
-    if "lf_cities" not in st.session_state:
-        st.session_state["lf_cities"] = sorted(scored["city"].unique().tolist())
-    if "lf_grades" not in st.session_state:
-        st.session_state["lf_grades"] = list(default_grades)
-    if "lf_risk_labels" not in st.session_state:
-        st.session_state["lf_risk_labels"] = sorted(scored["risk_label"].unique().tolist())
-    if "lf_revenue_bands" not in st.session_state:
-        st.session_state["lf_revenue_bands"] = sorted(scored["revenue_band"].unique().tolist())
-    if "lf_loan_purposes" not in st.session_state:
-        st.session_state["lf_loan_purposes"] = sorted(scored["loan_purpose"].unique().tolist())
+    # First visit: start with empty multiselects
+    for k in ["lf_cities", "lf_grades", "lf_risk_labels",
+              "lf_revenue_bands", "lf_loan_purposes"]:
+        if k not in st.session_state:
+            st.session_state[k] = []
+
     if "lf_loan_range" not in st.session_state:
         st.session_state["lf_loan_range"] = (
             int(scored["requested_loan_amount"].min()),
             int(scored["requested_loan_amount"].max()),
         )
-    if "lf_min_completeness" not in st.session_state:
-        st.session_state["lf_min_completeness"] = 0
-    if "lf_prime_cost" not in st.session_state:
-        st.session_state["lf_prime_cost"] = 100
-    if "lf_max_rent" not in st.session_state:
-        st.session_state["lf_max_rent"] = 30
-    if "lf_max_delivery" not in st.session_state:
-        st.session_state["lf_max_delivery"] = 100
-    if "lf_max_weekend" not in st.session_state:
-        st.session_state["lf_max_weekend"] = 100
+    for k, v in [("lf_min_completeness", 0), ("lf_prime_cost", 100),
+                 ("lf_max_rent", 30), ("lf_max_delivery", 100), ("lf_max_weekend", 100)]:
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    SELECT_ALL = "✓ Select all"
+
+    all_cities      = sorted(scored["city"].unique().tolist())
+    all_grades      = list(GRADE_ORDER)
+    all_risk_labels = sorted(scored["risk_label"].unique().tolist())
+    all_rev_bands   = sorted(scored["revenue_band"].unique().tolist())
+    all_purposes    = sorted(scored["loan_purpose"].unique().tolist())
+
+    # Pre-render: if Select all was chosen in previous interaction, expand it now
+    for key, all_opts in [
+        ("lf_cities", all_cities),
+        ("lf_grades", all_grades),
+        ("lf_risk_labels", all_risk_labels),
+        ("lf_revenue_bands", all_rev_bands),
+        ("lf_loan_purposes", all_purposes),
+    ]:
+        if SELECT_ALL in st.session_state.get(key, []):
+            st.session_state[key] = all_opts
 
     with st.expander("Dashboard filters", expanded=True):
         filter_cols = st.columns(3)
         cities = filter_cols[0].multiselect(
-            "City",
-            sorted(scored["city"].unique()),
-            key="lf_cities",
+            "City", all_cities + [SELECT_ALL], key="lf_cities"
         )
         grades = filter_cols[1].multiselect(
-            "Grade", GRADE_ORDER,
-            key="lf_grades",
+            "Grade", all_grades + [SELECT_ALL], key="lf_grades"
         )
         risk_labels = filter_cols[2].multiselect(
-            "Risk label",
-            sorted(scored["risk_label"].unique()),
-            key="lf_risk_labels",
+            "Risk label", all_risk_labels + [SELECT_ALL], key="lf_risk_labels"
         )
-
-        filter_cols = st.columns(3)
-        revenue_bands = filter_cols[0].multiselect(
-            "Revenue band",
-            sorted(scored["revenue_band"].unique()),
-            key="lf_revenue_bands",
+        filter_cols2 = st.columns(3)
+        revenue_bands = filter_cols2[0].multiselect(
+            "Revenue band", all_rev_bands + [SELECT_ALL], key="lf_revenue_bands"
         )
-        loan_purposes = filter_cols[1].multiselect(
-            "Loan purpose",
-            sorted(scored["loan_purpose"].unique()),
-            key="lf_loan_purposes",
+        loan_purposes = filter_cols2[1].multiselect(
+            "Loan purpose", all_purposes + [SELECT_ALL], key="lf_loan_purposes"
         )
         min_loan = int(scored["requested_loan_amount"].min())
         max_loan = int(scored["requested_loan_amount"].max())
-        loan_range = filter_cols[2].slider(
+        loan_range = filter_cols2[2].slider(
             "Requested loan amount",
-            min_value=min_loan,
-            max_value=max_loan,
-            step=25_000,
-            key="lf_loan_range",
+            min_value=min_loan, max_value=max_loan,
+            step=25_000, key="lf_loan_range",
         )
-
         min_completeness = st.slider(
             "Minimum data completeness",
-            min_value=0,
-            max_value=100,
-            step=10,
-            key="lf_min_completeness",
+            min_value=0, max_value=100,
+            step=10, key="lf_min_completeness",
         )
+
+    # Strip Select all out of actual values used for filtering
+    cities        = [v for v in cities        if v != SELECT_ALL]
+    grades        = [v for v in grades        if v != SELECT_ALL]
+    risk_labels   = [v for v in risk_labels   if v != SELECT_ALL]
+    revenue_bands = [v for v in revenue_bands if v != SELECT_ALL]
+    loan_purposes = [v for v in loan_purposes if v != SELECT_ALL]
 
     with st.expander("Optional operating-risk filters", expanded=False):
         risk_filter_cols = st.columns(4)
@@ -2323,12 +2404,19 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
             "Max weekend share", 0, 100, step=5, key="lf_max_weekend"
         )
 
+    # Empty selection = no filter on that dimension (show all)
+    city_filter   = cities        if cities        else scored["city"].unique().tolist()
+    grade_filter  = grades        if grades        else GRADE_ORDER
+    risk_filter   = risk_labels   if risk_labels   else scored["risk_label"].unique().tolist()
+    rev_filter    = revenue_bands if revenue_bands else scored["revenue_band"].unique().tolist()
+    purp_filter   = loan_purposes if loan_purposes else scored["loan_purpose"].unique().tolist()
+
     filtered = scored[
-        scored["city"].isin(cities)
-        & scored["grade"].isin(grades)
-        & scored["risk_label"].isin(risk_labels)
-        & scored["revenue_band"].isin(revenue_bands)
-        & scored["loan_purpose"].isin(loan_purposes)
+        scored["city"].isin(city_filter)
+        & scored["grade"].isin(grade_filter)
+        & scored["risk_label"].isin(risk_filter)
+        & scored["revenue_band"].isin(rev_filter)
+        & scored["loan_purpose"].isin(purp_filter)
         & scored["requested_loan_amount"].between(loan_range[0], loan_range[1])
         & (scored["data_completeness"] >= min_completeness)
         & (scored["prime_cost_ratio"] <= max_prime_cost / 100)
@@ -2337,7 +2425,17 @@ def render_lender_dashboard_page(data: dict[str, Any]) -> None:
         & (scored["weekend_share"] <= max_weekend / 100)
     ].copy().sort_values("total_score", ascending=False)
 
-    st.markdown(f"### Matching restaurants ({len(filtered)})")
+    no_filters = not any([cities, grades, risk_labels, revenue_bands, loan_purposes])
+    st.markdown(
+        f"### {'All restaurants' if no_filters else 'Matching restaurants'} ({len(filtered)})"
+    )
+    if no_filters:
+        st.markdown(
+            "<div style='color:#556480;font-size:0.85rem;margin-bottom:0.5rem;'>"
+            "No filters applied: showing all 80 restaurants sorted by score. "
+            "Use the filters above to narrow the pool.</div>",
+            unsafe_allow_html=True,
+        )
 
     if filtered.empty:
         st.warning("No restaurants match the selected filters.")
@@ -2582,8 +2680,15 @@ def render_sidebar(data: dict, role: str) -> str:
     # Sign out
     st.sidebar.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
     if st.sidebar.button("Sign out", key="signout_btn"):
+        # Preserve marketplace data across sign-out so offers survive session changes
+        preserved = {
+            k: v for k, v in st.session_state.items()
+            if k == "live_offers" or k.startswith("offer_responses_")
+        }
         for key in list(st.session_state.keys()):
             del st.session_state[key]
+        # Restore preserved data
+        st.session_state.update(preserved)
         st.session_state["just_signed_out"] = True
         st.rerun()
 

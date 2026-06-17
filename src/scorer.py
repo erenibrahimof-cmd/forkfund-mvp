@@ -522,7 +522,7 @@ def generate_score_drivers(row: pd.Series, score_breakdown: dict) -> dict:
             watch_points.append({
                 **d,
                 "sentiment": "watch",
-                "text": d["text"] + " — monitor this dimension before lending.",
+                "text": d["text"] + ". Monitor this dimension before lending.",
             })
         top_risk = (explicit_risks + watch_points)[:3]
     else:
